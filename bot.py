@@ -27,12 +27,7 @@ ACCOUNTS = [
     "beINSPORTS_EN",
 ]
 
-NITTER_INSTANCES = [
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
-    "https://nitter.1d4.us",
-    "https://nitter.net",
-]
+RSS_BASE = "https://rsshub.app/twitter/user"
 
 def load_seen():
     try:
@@ -46,26 +41,25 @@ def save_seen(seen):
         json.dump(list(seen)[-500:], f)
 
 async def fetch_tweets_for_account(client, account):
-    for instance in NITTER_INSTANCES:
-        try:
-            url = f"{instance}/{account}/rss"
-            r = await client.get(url, timeout=10)
-            feed = feedparser.parse(r.text)
-            tweets = []
-            for entry in feed.entries[:10]:
-                title = entry.get("title", "")
-                if title and not title.startswith("RT @"):
-                    tweets.append({
-                        "id":      hashlib.md5(entry.get("link","").encode()).hexdigest(),
-                        "account": account,
-                        "text":    title,
-                        "link":    entry.get("link", ""),
-                    })
-            log.info(f"OK {account}: {len(tweets)} tweets from {instance}")
-            return tweets
-        except Exception as e:
-            log.warning(f"FAIL {instance}/{account}: {e}")
-    return []
+    try:
+        url = f"{RSS_BASE}/{account}"
+        r = await client.get(url, timeout=15)
+        feed = feedparser.parse(r.text)
+        tweets = []
+        for entry in feed.entries[:10]:
+            title = entry.get("title", "")
+            if title and not title.startswith("RT @"):
+                tweets.append({
+                    "id":      hashlib.md5(entry.get("link","").encode()).hexdigest(),
+                    "account": account,
+                    "text":    title,
+                    "link":    entry.get("link", ""),
+                })
+        log.info(f"OK {account}: {len(tweets)} tweets")
+        return tweets
+    except Exception as e:
+        log.error(f"FAIL {account}: {e}")
+        return []
 
 async def fetch_all_tweets():
     async with httpx.AsyncClient(follow_redirects=True) as client:
