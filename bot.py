@@ -27,7 +27,13 @@ ACCOUNTS = [
     "beINSPORTS_EN",
 ]
 
-RSS_BASE = "https://rsshub.app/twitter/user"
+RSS_FEEDS = {
+    "BBC Sport":         "https://feeds.bbci.co.uk/sport/rss.xml",
+    "Sky Sports":        "https://www.skysports.com/rss/12040",
+    "ESPN":              "https://www.espn.com/espn/rss/news",
+    "Goal.com":          "https://www.goal.com/feeds/en/news",
+    "Fabrizio Romano":   "https://fabrizioromano.substack.com/feed",
+}
 
 def load_seen():
     try:
@@ -40,32 +46,33 @@ def save_seen(seen):
     with open(SEEN_FILE, "w") as f:
         json.dump(list(seen)[-500:], f)
 
-async def fetch_tweets_for_account(client, account):
+async def fetch_tweets_for_account(client, source_name):
+    url = RSS_FEEDS[source_name]
     try:
-        url = f"{RSS_BASE}/{account}"
         r = await client.get(url, timeout=15)
         feed = feedparser.parse(r.text)
-        tweets = []
+        items = []
         for entry in feed.entries[:10]:
-            title = entry.get("title", "")
-            if title and not title.startswith("RT @"):
-                tweets.append({
+            title = entry.get("title", "").strip()
+            if title:
+                items.append({
                     "id":      hashlib.md5(entry.get("link","").encode()).hexdigest(),
-                    "account": account,
+                    "account": source_name,
                     "text":    title,
                     "link":    entry.get("link", ""),
                 })
-        log.info(f"OK {account}: {len(tweets)} tweets")
-        return tweets
+        log.info(f"OK {source_name}: {len(items)} items")
+        return items
     except Exception as e:
-        log.error(f"FAIL {account}: {e}")
+        log.error(f"FAIL {source_name}: {e}")
         return []
 
 async def fetch_all_tweets():
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        tasks = [fetch_tweets_for_account(client, acc) for acc in ACCOUNTS]
+        tasks = [fetch_tweets_for_account(client, name) for name in RSS_FEEDS]
         results = await asyncio.gather(*tasks)
     return [t for sublist in results for t in sublist]
+
 
 async def process_batch(new_tweets):
     if not new_tweets:
